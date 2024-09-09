@@ -1,0 +1,127 @@
+##1## czy mozemy pobrac dokumenty zmodyfikowane od konkretnej daty
+
+query GetUpdate {
+  Page(page: 1, perPage: 50) {
+    media(type: ANIME) {
+      id
+      title {
+        romaji
+        english
+        native
+      }
+      updatedAt
+      }
+
+    }
+  }
+
+
+
+## 2## czy mozemy sterować ilością elementów per strona
+
+query GetperPage {
+  Page(page: 1 , perPage:10) {
+    media(type: ANIME) {
+      id
+      title {
+         romaji
+         english
+         native
+       }
+    }}}
+
+zmiana perPage X powoduje zmiane wyswietlania ilosci content 
+
+
+
+
+###3## czy mozemy filtrować po genre
+
+query GetGenre {
+  Page(page: 1, perPage: 50) {
+    media(genre: "Slice of Life") {
+      id
+      title {
+        romaji
+        english
+      }
+      genres
+    }
+  }
+}
+
+zmiana genre np na Romance powoduje wyswietlenie anime ktore w genres posiadaja "Romance"
+
+##4## czy mozemy filtrować po rezyserze
+
+import requests
+
+
+query = """
+query GetDirector ($name: String) {
+  Page {
+    staff(search: $name) {
+      id
+      name {
+        full
+      }
+      staffMedia {
+        nodes {
+          title {
+            english
+          }
+          staff {
+            edges {
+              role
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+variables = {
+    "name": "Souta Ueno"
+}
+
+url = "https://graphql.anilist.co"
+response = requests.post(url, json={'query': query, 'variables': variables})
+
+if response.ok:
+    data = response.json()
+    
+    director_anime = set()
+    for staff in data['data']['Page']['staff']:
+        for media in staff['staffMedia']['nodes']:
+            for role in media['staff']['edges']:
+                if 'Director' in role['role']:  
+                    director_anime.add((media['title']['english']))
+
+    
+    
+    print(director_anime) 
+
+mozna filtrowac anime po directors 
+
+##5##czy mozemy filtrować po zakresie roku produkcji od/do
+
+query GetYear {
+  Page(page: 1, perPage: 50) {
+    media(type: ANIME, startDate_greater: 2019, startDate_lesser: 2020) {
+      id
+      title {
+        romaji
+        english
+        native
+      }
+      startDate {
+        year
+        month
+      }
+
+    }
+  }
+}
+
