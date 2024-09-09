@@ -1,0 +1,142 @@
+from bs4 import BeautifulSoup
+import json
+import re
+import requests
+
+url = "https://fr.wikipedia.org/wiki/House_of_the_Dragon"
+odpowiedz = requests.get(url)
+zupa = BeautifulSoup(odpowiedz.content, 'html.parser')
+
+dane = {
+    'url:': url,
+    'french title': '',
+    "orihinal title": '',
+    'country': '',
+    'actors': [],
+    'directors': [],
+    'appeard on HBO': '',
+    "sezony": []
+}
+
+# Tytuły
+tytul_oryginalny = zupa.find('h1', id="firstHeading").text
+dane['orihinal title'] = tytul_oryginalny
+
+tytul_francuski = zupa.find('tbody').find('i').get_text()
+dane['french title'] = tytul_francuski
+
+# Kraj
+kraj = zupa.find('span', class_='nowrap').get_text().rstrip(' "').lstrip(' "')
+dane['country'] = kraj 
+
+# Sekcja aktorów
+tabela = zupa.find('tbody')
+wiersze = tabela.find_all('tr')
+
+aktorzy_lista = []
+for wiersz in wiersze:
+    komorka = wiersz.find('td')
+    if komorka:
+        linki = komorka.find_all('a', href=True)
+        # Komorka zawiera więcej niż pięć linków-charakterystyczne dla sekcii z wypisanymi aktorami 
+        if len(linki) > 5:
+            for link in linki:
+                href = link['href']
+                if href.startswith('/wiki/'):
+                    nazwa_aktora = link.get_text()
+                    aktorzy_lista.append(nazwa_aktora)
+
+dane['actors'] = aktorzy_lista 
+
+# Rok wydania na HBO
+data = zupa.find_all('time')
+for rok in data:
+    a_tags = rok.find_all('a')
+    if len(a_tags) >= 3:  # Bo dzien, miesiac, rok 
+        year = a_tags[2].get_text()  # Rok
+dane['appeard on HBO'] = year
+
+#rezyseria
+rezyseria = zupa.find_all('div', class_='mw-heading')[10]
+dd_elements = rezyseria.find_next('dd', string=lambda text: 'Production déléguée' in text)
+
+
+directors = []
+if dd_elements:
+    directors_text = dd_elements.get_text()
+    directors = [name.strip() for name in directors_text.split(':')[-1].split(',')]
+
+dane['directors']=directors
+
+
+
+# Sezony i odcinki
+sezony = zupa.find_all('div', class_='mw-heading')
+for sezon in sezony:
+    if 'saison' in sezon.text.lower():
+        tytul_sezonu = sezon.find('h3').text
+
+        tytul_sezonu_cleaned = re.sub(r'\(\d{4}\)', '', tytul_sezonu).strip()
+
+        biezacy_sezon = {
+            "no": len(dane["sezony"]) + 1,
+            "title": tytul_sezonu_cleaned,
+            "year": [], 
+            "episodes": [],
+        }
+
+        nastepny_element = sezon.find_next_sibling()
+        while nastepny_element and nastepny_element.name not in ['h3']:
+            if nastepny_element.name == 'p':
+                time_elements = nastepny_element.find_all('time')
+                if time_elements:
+                    biezacy_sezon["year"] = time_elements[0]['datetime'].split('-')[0]
+                    break
+            nastepny_element = nastepny_element.find_next_sibling()
+
+        nastepny_element = sezon.find_next_sibling()
+        numer_odcinka = 0  # Reset numeracji odcinków dla każdego sezonu
+        while nastepny_element and nastepny_element.name not in ['h3']:
+            if nastepny_element.name == 'ol':
+                odcinki = nastepny_element.find_all('li')
+                for odcinek in odcinki:
+                    if biezacy_sezon["no"] == 1 and numer_odcinka >= 10:
+                        # Jeśli pierwszy sezon ma już 10 odcinków, przeskocz do kolejnego sezonu
+                        break
+
+                    tytul_odcinka = odcinek.get_text()
+                    numer_odcinka += 1
+
+                    if '(' in tytul_odcinka and ')' in tytul_odcinka:
+                        czesci = tytul_odcinka.split('(')
+                        tytul_francuski_odcinka = czesci[0].strip()
+                        tytul_oryginalny_odcinka = czesci[1].replace(')', '').strip()
+                    else:
+                        tytul_francuski_odcinka = tytul_odcinka.strip()
+                        tytul_oryginalny_odcinka = ""
+
+                    biezacy_sezon["episodes"].append({
+                        "no": numer_odcinka,
+                        "title of episode": tytul_francuski_odcinka,
+                        "original_title of episode": tytul_oryginalny_odcinka,
+                        "year": biezacy_sezon["year"],
+                        'actors': dane['actors'],
+                        'directors': dane['directors'],
+                    })
+
+            nastepny_element = nastepny_element.find_next_sibling()
+
+        dane["sezony"].append(biezacy_sezon)
+
+# Przypisanie pozostałych odcinków do drugiego sezonu, jeśli pierwszy sezon miał dokładnie 10 odcinków
+if len(dane["sezony"]) > 1 and len(dane["sezony"][0]["episodes"]) == 10:
+    drugi_sezon = dane["sezony"][1]
+    pierwszy_sezon = dane["sezony"][0]
+    while len(pierwszy_sezon["episodes"]) < 10 and drugi_sezon["episodes"]:
+        odcinek = drugi_sezon["episodes"].pop(0)
+        odcinek["no"] = len(pierwszy_sezon["episodes"]) + 1
+        pierwszy_sezon["episodes"].append(odcinek)
+
+# Zapisz dane do pliku JSON
+dane_json = json.dumps(dane, ensure_ascii=False, indent=4)
+print(dane_json)
