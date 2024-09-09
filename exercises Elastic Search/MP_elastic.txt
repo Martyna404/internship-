@@ -1,0 +1,205 @@
+#1.1 Dokument którego hubertContentId ma najmniejszą wartość;
+
+GET io_moid_translate_ver_a/_search
+{
+  "size":1,
+  "query": {
+    "match_all": {}
+  },
+  "sort": {
+    "_script": {
+      "type": "number",
+      "script": "doc['record.tvContent.fields.hubertContentId'].value != null ? Integer.parseInt(doc['record.tvContent.fields.hubertContentId'].value) : 0",
+      "order": "asc"
+    }
+  }
+}
+
+# 1.2 10 dokumentów które mają hubertContentDeleted == True przesortowane rosnąco po hubertContentId 
+ 
+GET io_moid_translate_ver_a/_search
+{
+  "size": 10,
+  "_source": ["record.tvContent.fields.hubertContentDeleted", "record.tvContent.fields.hubertContentId"],
+  "query": {
+    "term": {
+      "record.tvContent.fields.hubertContentDeleted": true
+    }
+  },
+  "sort": {
+    "_script": {
+      "type": "number",
+      "script": {
+        "lang": "painless",
+        "source": "return doc['record.tvContent.fields.hubertContentId'].empty ? 0 : Long.parseLong(doc['record.tvContent.fields.hubertContentId'].value);"
+      },
+      "order": "asc"
+    }
+  }
+}
+
+# 1.3 Dokument który posiada kolekcję mergeHistories, w której istnieje element ze schema == 'tvContent' oraz 'externalIdOld' == 813553
+ 
+GET io_moid_translate_ver_a/_search
+{
+  "query": {
+    "nested": {
+      "path": "record.tvContent.mergeHistories",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "match": {
+                "record.tvContent.mergeHistories.schema": "tvContent"
+              }
+            },
+            {
+              "term": {
+                "record.tvContent.mergeHistories.externalIdOld": "813553"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+ 
+# 2.1 Domumenty z level == 'tvContent' oraz timestamp większy bądź równy 1405506909 i mniejszy od 1505506909
+
+GET io_moid_merge_histories_ver_c/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "level": "tvContent"
+          }
+        },
+        {
+          "range": {
+            "timestamp": {
+              "gte": 1405506909,
+              "lt": 1505506909
+            }
+          }
+        }
+      ]
+    }
+  }
+}   
+ 
+# 2.2 Podaj ilość dokumentów zebranych przez query nr1
+
+GET io_moid_merge_histories_ver_c/_count
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "level": "tvContent"
+          }
+        },
+        {
+          "range": {
+            "timestamp": {
+              "gte": 1405506909,
+              "lt": 1505506909
+            }
+          }
+        }
+      ]
+    }
+  }
+}   
+ 
+# 2.3 Przesortuj zwrotkę z punktu 1 po mediapressId
+
+GET io_moid_merge_histories_ver_c/_search
+{
+  "sort": [
+    {
+      "mediapressId.keyword": {
+        "order": "asc"
+      }
+    }
+  ],
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "level": "tvcontent"
+          }
+        },
+        {
+          "range": {
+            "timestamp": {
+              "gte": 1405506909,
+              "lt": 1505506909
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
+# 3.1 10 ostatnich dokumentów (nie starszych niż tydzień wstecz) których extension == jpg; -> brak, tylko posortowane
+
+GET jake-objects/_search
+{
+  "size": 10,
+  "sort": {
+    "created": {
+      "order": "desc"
+    }
+  },
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "term": {
+            "extension": "jpg"
+          }
+        }
+      ]
+    }
+  }
+}
+
+# 3.2  Wszystkie dokumenty których storage != "HUBERTIO_PVC"
+ 
+GET jake-objects/_search
+{
+  "query": {
+    "bool": {
+      "must_not": {
+        "term": {
+          "storage.keyword": "HUBERTIO_PVC"
+        }
+      }
+    }
+  }
+}
+ 
+# 3.3 10 domumentów z pustym extension ze zwróceniem tylko wartości path
+
+GET jake-objects/_search
+{
+  "_source": ["path"],
+  "query": {
+    "bool": {
+      "must": {
+        "term": {
+          "extension.keyword": ""
+        }
+      }
+    }
+  }
+}
+
+
+
